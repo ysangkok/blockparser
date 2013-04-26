@@ -11,24 +11,6 @@
 static uint8_t empty[kSHA256ByteSize] = { 0x42 };
 typedef GoogMap<Hash256, uint64_t, Hash256Hasher, Hash256Equal>::Map OutputMap;
 
-static void writeEscapedBinaryBuffer(
-    FILE          *f,
-    const uint8_t *p,
-    size_t        n
-)
-{
-    p += n;
-
-    while(n--) {
-        uint8_t c = *(--p);
-             if(unlikely(0==c))  { fputc('\\', f); c = '0'; }
-        else if(unlikely('\n'==c)) fputc('\\', f);
-        else if(unlikely('\t'==c)) fputc('\\', f);
-        else if(unlikely('\\'==c)) fputc('\\', f);
-        fputc(c, f);
-    }
-}
-
 struct CSVDump:public Callback
 {
     FILE *txFile;
@@ -46,6 +28,9 @@ struct CSVDump:public Callback
 
     // Reference information
     const uint8_t *blkStart;
+    uint64_t totalBlkOutput;
+    uint64_t totalBlkFees;
+    uint64_t numBlkTxs;
 
     const uint8_t *txStart;
     uint64_t numTxInputs;
@@ -100,62 +85,19 @@ struct CSVDump:public Callback
 
         txFile = fopen("transactions.csv", "w");
         if(!txFile) sysErrFatal("couldn't open file txs.csv for writing\n");
+        fprintf(txFile, "ID,Hash,Version,BlockId,NumInputs,NumOutputs,LockTime,Size\n");
 
         blockFile = fopen("blocks.csv", "w");
         if(!blockFile) sysErrFatal("couldn't open file blocks.csv for writing\n");
+        fprintf(blockFile, "ID,Hash,Timestamp,Version,Nonce,Difficulty,Merkle,NumTransactions,OutputValue,FeesValue,Size\n");
 
         inputFile = fopen("inputs.csv", "w");
         if(!inputFile) sysErrFatal("couldn't open file inputs.csv for writing\n");
+        fprintf(inputFile, "ID,TransactionId,Index,OutputID,OutputIndex,Script\n");
 
         outputFile = fopen("outputs.csv", "w");
         if(!outputFile) sysErrFatal("couldn't open file outputs.csv for writing\n");
-
-        FILE *csvFile = fopen("blockChain.csv", "w");
-        if(!csvFile) sysErrFatal("couldn't open file blockChain.csv for writing\n");
-
-        /*
-        fprintf(
-            csvFile,
-            "\n"
-            "DROP DATABASE IF EXISTS blockChain;\n"
-            "CREATE DATABASE blockChain;\n"
-            "USE blockChain;\n"
-            "\n"
-            "DROP TABLE IF EXISTS transactions;\n"
-            "DROP TABLE IF EXISTS outputs;\n"
-            "DROP TABLE IF EXISTS inputs;\n"
-            "DROP TABLE IF EXISTS blocks;\n"
-            "\n"
-            "CREATE TABLE blocks(\n"
-            "    id BIGINT PRIMARY KEY,\n"
-            "    hash BINARY(32),\n"
-            "    time BIGINT\n"
-            ");\n"
-            "\n"
-            "CREATE TABLE transactions(\n"
-            "    id BIGINT PRIMARY KEY,\n"
-            "    hash BINARY(32),\n"
-            "    blockID BIGINT\n"
-            ");\n"
-            "\n"
-            "CREATE TABLE outputs(\n"
-            "    id BIGINT PRIMARY KEY,\n"
-            "    dstAddress CHAR(36),\n"
-            "    value BIGINT,\n"
-            "    txID BIGINT,\n"
-            "    offset INT\n"
-            ");\n"
-            "\n"
-            "CREATE TABLE inputs(\n"
-            "    id BIGINT PRIMARY KEY,\n"
-            "    outputID BIGINT,\n"
-            "    txID BIGINT,\n"
-            "    offset INT\n"
-            ");\n"
-            "\n"
-        );
-        fclose(sqlFile);
-        */
+        fprintf(outputFile, "ID,TransactionId,Index,InputID,Value,Script,ReceivingAddress\n");
 
         /*
         FILE *bashFile = fopen("blockChain.bash", "w");
@@ -192,9 +134,13 @@ struct CSVDump:public Callback
         const uint8_t *p
     )
     {
+        fprintf(stderr, "Start block\n");
         if(0<=cutoffBlock && cutoffBlock<(int64_t)blkID) wrapup();
 
         blkStart = p;
+        totalBlkOutput = 0;
+        totalBlkFees = 0;
+        numBlkTxs = 0;
 
         uint8_t blockHash[kSHA256ByteSize];
         sha256Twice(blockHash, p, 80);
@@ -229,9 +175,6 @@ struct CSVDump:public Callback
         // TODO Merkle root
         //uint8_t buf2[1 + 2*kSHA256ByteSize];
         //fprintf(blockFile, "%s,", buf);
-
-        // Nonce
-        fprintf(blockFile, "%" PRIu32 ",", nonce);
     }
 
 //    virtual void oldstartBlock(
@@ -285,9 +228,13 @@ struct CSVDump:public Callback
         const uint8_t *p
     )
     {
-        // TODO Number of transactions
+        // Number of transactions
+        fprintf(blockFile, "%" PRIu64 ",", numBlkTxs);
 
-        // TODO Value of transactions
+        // Value of output transactions
+        fprintf(blockFile, "%" PRIu64 ",", totalBlkOutput);
+        // TODO Value of fees
+        fprintf(blockFile, "%" PRIu64 ",", totalBlkFees);
 
         // Size - off by 4?
         fprintf(blockFile, "%" PRIu64 "\n", (uint64_t)(p - blkStart));
@@ -299,6 +246,7 @@ struct CSVDump:public Callback
     )
     {
         txStart = p;
+        numBlkTxs++;
         numTxInputs = 0;
         numTxOutputs = 0;
 
@@ -347,6 +295,7 @@ struct CSVDump:public Callback
     )
     {
         numTxOutputs++;
+        totalBlkOutput += value;
 
         // ID
         fprintf(outputFile, "%" PRIu64 ",", outputID);
