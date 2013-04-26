@@ -1,0 +1,46 @@
+/* vim: set tabstop=21 expandtab syntax=sql: */
+
+CREATE TABLE t_block (
+  f_id               BIGINT PRIMARY KEY
+ ,f_hash             TEXT NOT NULL
+ ,f_version          INT NOT NULL
+ ,f_timestamp        TIMESTAMP WITHOUT TIME ZONE NOT NULL
+ ,f_nonce            BIGINT NOT NULL
+ ,f_difficulty       NUMERIC(20,4)
+ ,f_merkle           TEXT NOT NULL
+ ,f_numtransactions  BIGINT NOT NULL
+ ,f_outputvalue      BIGINT NOT NULL
+ ,f_feesvalue        BIGINT NOT NULL
+ ,f_size             BIGINT NOT NULL
+);
+
+CREATE TABLE t_transaction (
+  f_id               BIGINT PRIMARY KEY
+ ,f_hash             TEXT NOT NULL
+ ,f_version          INT NOT NULL
+ ,f_blockid          BIGINT REFERENCES t_block(f_id)
+ ,f_numinputs        BIGINT NOT NULL
+ ,f_numoutputs       BIGINT NOT NULL
+ ,f_outputvalue      BIGINT NOT NULL
+ ,f_feesvalue        BIGINT NOT NULL
+ ,f_locktime         BIGINT NOT NULL
+ ,f_size             BIGINT NOT NULL
+);
+
+CREATE TABLE t_output (
+  f_id               BIGINT PRIMARY KEY
+ ,f_transactionid    BIGINT REFERENCES t_transaction(f_id)
+ ,f_index            INT NOT NULL
+ ,f_value            BIGINT NOT NULL
+ ,f_script           TEXT NOT NULL
+ ,f_receivingaddress TEXT NOT NULL
+);
+
+CREATE TABLE t_input (
+  f_id               BIGINT PRIMARY KEY
+ ,f_transactionid    BIGINT REFERENCES t_transaction(f_id)
+ ,f_index            INT NOT NULL
+ ,f_outputid         BIGINT REFERENCES t_output(f_id)
+ ,f_outputindex      INT NOT NULL
+ ,f_script           TEXT NOT NULL
+);

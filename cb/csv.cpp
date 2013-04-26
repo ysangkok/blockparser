@@ -28,13 +28,15 @@ struct CSVDump:public Callback
 
     // Reference information
     const uint8_t *blkStart;
+    uint64_t totalBlkInput;
     uint64_t totalBlkOutput;
-    uint64_t totalBlkFees;
     uint64_t numBlkTxs;
 
     const uint8_t *txStart;
     uint64_t numTxInputs;
     uint64_t numTxOutputs;
+    uint64_t totalTxInput;
+    uint64_t totalTxOutput;
 
     CSVDump()
     {
@@ -85,11 +87,11 @@ struct CSVDump:public Callback
 
         txFile = fopen("transactions.csv", "w");
         if(!txFile) sysErrFatal("couldn't open file txs.csv for writing\n");
-        fprintf(txFile, "ID,Hash,Version,BlockId,NumInputs,NumOutputs,LockTime,Size\n");
+        fprintf(txFile, "ID,Hash,Version,BlockId,NumInputs,NumOutputs,OutputValue,FeesValue,LockTime,Size\n");
 
         blockFile = fopen("blocks.csv", "w");
         if(!blockFile) sysErrFatal("couldn't open file blocks.csv for writing\n");
-        fprintf(blockFile, "ID,Hash,Timestamp,Version,Nonce,Difficulty,Merkle,NumTransactions,OutputValue,FeesValue,Size\n");
+        fprintf(blockFile, "ID,Hash,Version,Timestamp,Nonce,Difficulty,Merkle,NumTransactions,OutputValue,FeesValue,Size\n");
 
         inputFile = fopen("inputs.csv", "w");
         if(!inputFile) sysErrFatal("couldn't open file inputs.csv for writing\n");
@@ -97,7 +99,7 @@ struct CSVDump:public Callback
 
         outputFile = fopen("outputs.csv", "w");
         if(!outputFile) sysErrFatal("couldn't open file outputs.csv for writing\n");
-        fprintf(outputFile, "ID,TransactionId,Index,InputID,Value,Script,ReceivingAddress\n");
+        fprintf(outputFile, "ID,TransactionId,Index,Value,Script,ReceivingAddress\n");
 
         return 0;
     }
@@ -115,8 +117,8 @@ struct CSVDump:public Callback
         const uint8_t *p = b->data;
 
         blkStart = p;
+        totalBlkInput = 0;
         totalBlkOutput = 0;
-        totalBlkFees = 0;
         numBlkTxs = 0;
 
         LOAD(uint32_t, version, p);
@@ -127,18 +129,23 @@ struct CSVDump:public Callback
         LOAD(uint32_t, nonce, p);
 
         // ID
-        fprintf(blockFile, "%" PRIu64 ",", blkID++);
+        fprintf(blockFile, "%" PRIu64 ",", blkID);
 
         // Hash
         uint8_t buf[1 + 2*kSHA256ByteSize];
         toHex(buf, blockHash);
-        fprintf(blockFile, "%s,", buf);
-
-        // Timestamp
-        fprintf(blockFile, "%" PRIu64 ",", (uint64_t)blkTime);
+        fprintf(blockFile, "\"%s\",", buf);
 
         // Version
         fprintf(blockFile, "%" PRIu32 ",", version);
+
+        // Timestamp
+        time_t blockTime = blkTime;
+        char tbuf[23];
+        strftime(tbuf, sizeof tbuf, "%FT%TZ", gmtime(&blockTime));
+        //strftime(buf, sizeof tbuf, "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
+
+        fprintf(blockFile, "\"%s\",", tbuf);
 
         // Nonce
         fprintf(blockFile, "%" PRIu32 ",", nonce);
@@ -151,7 +158,7 @@ struct CSVDump:public Callback
         uint8_t buf3[1 + 2*kSHA256ByteSize];
         memcpy(buf2, &blkMerkleRoot, kSHA256ByteSize);
         toHex(buf3, buf2);
-        fprintf(blockFile, "%s,", buf3);
+        fprintf(blockFile, "\"%s\",", buf3);
     }
 
     virtual void endBlock(
@@ -164,11 +171,13 @@ struct CSVDump:public Callback
         // Value of output transactions
         fprintf(blockFile, "%" PRIu64 ",", totalBlkOutput);
 
-        // TODO Value of fees
-        fprintf(blockFile, "%" PRIu64 ",", totalBlkFees);
+        // Value of fees
+        fprintf(blockFile, "%" PRIu64 ",", totalBlkInput - totalBlkOutput);
 
-        // Size - off by 4?
+        // TODO Size - off by 4?
         fprintf(blockFile, "%" PRIu64 "\n", (uint64_t)(b->data - blkStart));
+
+        blkID++;
     }
 
     virtual void startTX(
@@ -180,14 +189,16 @@ struct CSVDump:public Callback
         numBlkTxs++;
         numTxInputs = 0;
         numTxOutputs = 0;
+        totalTxInput = 0;
+        totalTxOutput = 0;
 
         // ID
-        fprintf(txFile, "%" PRIu64 ",", txID++);
+        fprintf(txFile, "%" PRIu64 ",", txID);
 
         // Hash
         uint8_t buf[1 + 2*kSHA256ByteSize];
         toHex(buf, hash);
-        fprintf(txFile, "%s,", buf);
+        fprintf(txFile, "\"%s\",", buf);
 
         // Version
         LOAD(uint32_t, version, p);
@@ -208,12 +219,20 @@ struct CSVDump:public Callback
         // Number of outputs
         fprintf(txFile, "%" PRIu64 ",", numTxOutputs);
 
+        // Value of outputs
+        fprintf(txFile, "%" PRIu64 ",", totalTxOutput);
+
+        // Value of fees
+        fprintf(txFile, "%" PRIu64 ",", totalTxInput - totalTxOutput);
+
         // Lock time
         LOAD(uint32_t, lockTime, p);
         fprintf(txFile, "%" PRIu32 ",", lockTime);
 
         // Size - off by 4?
         fprintf(txFile, "%" PRIu64 "\n", (uint64_t)(p - txStart));
+
+        txID++;
     }
 
     virtual void endOutput(
@@ -226,6 +245,7 @@ struct CSVDump:public Callback
     )
     {
         numTxOutputs++;
+        totalTxOutput += value;
         totalBlkOutput += value;
 
         // ID
@@ -237,13 +257,17 @@ struct CSVDump:public Callback
         // Index
         fprintf(outputFile, "%" PRIu64 ",", outputIndex);
 
-        // TODO Transaction input ID
-        fprintf(outputFile, ",");
-
         // Value
         fprintf(outputFile, "%" PRIu64 ",", value);
 
-        // TODO Script
+        // Script
+        fputc('"', outputFile);
+        for (uint64_t i = 0; i < outputScriptSize; i++)
+        {
+          fprintf(outputFile, "%02x", outputScript[i]);
+        }
+        fputc('"', outputFile);
+        fputc(',', outputFile);
 
         // Receiving address
         uint8_t address[40];
@@ -265,6 +289,20 @@ struct CSVDump:public Callback
         outputMap[h] = outputID++;
     }
 
+    virtual void startInput(
+        const uint8_t *p
+    )
+    {
+        static uint256_t gNullHash;
+        LOAD(uint256_t, upTXHash, p);
+        if (0==memcmp(gNullHash.v, upTXHash.v, sizeof(gNullHash))) {
+            uint64_t reward = getBaseReward(blkID);
+            totalTxInput += reward;
+            totalBlkInput += reward;
+        }
+    }
+
+
     virtual void edge(
         uint64_t      value,
         const uint8_t *upTXHash,
@@ -278,6 +316,9 @@ struct CSVDump:public Callback
     )
     {
         numTxInputs++;
+        totalTxInput += value;
+        totalBlkInput += value;
+
         // ID
         fprintf(inputFile, "%" PRIu64 ",", inputID++);
 
@@ -301,8 +342,14 @@ struct CSVDump:public Callback
         // Transaction output index
         fprintf(inputFile, "%" PRIu64 ",", outputIndex);
 
-        // TODO Script
-        fprintf(inputFile, "\n");
+        // Script
+        fputc('"', inputFile);
+        for (uint64_t i = 0; i < inputScriptSize; i++)
+        {
+          fprintf(inputFile, "%02x", inputScript[i]);
+        }
+        fputc('"', inputFile);
+        fputc('\n', inputFile);
     }
 
     virtual void wrapup()
