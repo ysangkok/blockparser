@@ -304,5 +304,8 @@
         uint64_t h
     );
 
+    double difficulty(
+        unsigned int bits
+    );
 #endif // __UTIL_H__
 

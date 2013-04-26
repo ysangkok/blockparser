@@ -99,57 +99,31 @@ struct CSVDump:public Callback
         if(!outputFile) sysErrFatal("couldn't open file outputs.csv for writing\n");
         fprintf(outputFile, "ID,TransactionId,Index,InputID,Value,Script,ReceivingAddress\n");
 
-        /*
-        FILE *bashFile = fopen("blockChain.bash", "w");
-        if(!bashFile) sysErrFatal("couldn't open file blockChain.bash for writing\n");
-
-        fprintf(
-            bashFile,
-            "\n"
-            "#!/bin/bash\n"
-            "\n"
-            "echo\n"
-            "\n"
-            "echo 'wiping/re-creating DB blockChain ...'\n"
-            "time mysql -u root -p -hlocalhost --password='' < blockChain.sql\n"
-            "echo done\n"
-            "echo\n"
-            "\n"
-            "for i in blocks inputs outputs transactions\n"
-            "do\n"
-            "    echo Importing table $i ...\n"
-            "    time mysqlimport -u root -p -hlocalhost --password='' --lock-tables --use-threads=3 --local blockChain $i.txt\n"
-            "    echo done\n"
-            "    echo\n"
-            "done\n"
-            "\n"
-        );
-        fclose(bashFile);
-        */
-
         return 0;
     }
 
     virtual void startBlock(
-        const uint8_t *p
+        const Block *b,
+        uint64_t chainBase
     )
     {
-        fprintf(stderr, "Start block\n");
-        if(0<=cutoffBlock && cutoffBlock<(int64_t)blkID) wrapup();
+        if(0<=cutoffBlock && cutoffBlock<b->height) wrapup();
+
+        uint8_t blockHash[kSHA256ByteSize];
+        sha256Twice(blockHash, b->data, 80);
+
+        const uint8_t *p = b->data;
 
         blkStart = p;
         totalBlkOutput = 0;
         totalBlkFees = 0;
         numBlkTxs = 0;
 
-        uint8_t blockHash[kSHA256ByteSize];
-        sha256Twice(blockHash, p, 80);
-
         LOAD(uint32_t, version, p);
         SKIP(uint256_t, prevBlkHash, p);
         LOAD(uint256_t, blkMerkleRoot, p);
         LOAD(uint32_t, blkTime, p);
-        LOAD(uint32_t, difficulty, p);
+        LOAD(uint32_t, difficultyBits, p);
         LOAD(uint32_t, nonce, p);
 
         // ID
@@ -170,62 +144,18 @@ struct CSVDump:public Callback
         fprintf(blockFile, "%" PRIu32 ",", nonce);
 
         // Difficulty
-        fprintf(blockFile, "%" PRIu32 ",", difficulty);
+        fprintf(blockFile, "%f,", difficulty(difficultyBits));
 
-        // TODO Merkle root
-        //uint8_t buf2[1 + 2*kSHA256ByteSize];
-        //fprintf(blockFile, "%s,", buf);
+        // Merkle root
+        uint8_t buf2[kSHA256ByteSize];
+        uint8_t buf3[1 + 2*kSHA256ByteSize];
+        memcpy(buf2, &blkMerkleRoot, kSHA256ByteSize);
+        toHex(buf3, buf2);
+        fprintf(blockFile, "%s,", buf3);
     }
 
-//    virtual void oldstartBlock(
-//        const Block *b,
-//        uint64_t
-//    )
-//    {
-//        if(0<=cutoffBlock && cutoffBlock<b->height) wrapup();
-//
-//        uint8_t blockHash[kSHA256ByteSize];
-//        sha256Twice(blockHash, b->data, 80);
-//
-//        const uint8_t *p = b->data;
-//        LOAD(uint32_t, version, p);
-//        SKIP(uint256_t, prevBlkHash, p);
-//        LOAD(uint256_t, blkMerkleRoot, p);
-//        LOAD(uint32_t, blkTime, p);
-//        LOAD(uint32_t, difficulty, p);
-//        LOAD(uint32_t, nonce, p);
-//
-//        // ID
-//        fprintf(blockFile, "%" PRIu64 ",", (blkID = b->height-1));
-//
-//        // Hash
-//        uint8_t buf[1 + 2*kSHA256ByteSize];
-//        toHex(buf, blockHash);
-//        fprintf(blockFile, "%s,", buf);
-//
-//        // Timestamp
-//        fprintf(blockFile, "%" PRIu64 ",", (uint64_t)blkTime);
-//
-//        // Version
-//        fprintf(blockFile, "%" PRIu32 ",", version);
-//
-//        // Nonce
-//        fprintf(blockFile, "%" PRIu32 ",", nonce);
-//
-//        // Difficulty
-//        fprintf(blockFile, "%" PRIu32 ",", difficulty);
-//
-//        // TODO Merkle root
-//        //uint8_t buf2[1 + 2*kSHA256ByteSize];
-//        //fprintf(blockFile, "%s,", buf);
-//
-//        // Nonce
-//        fprintf(blockFile, "%" PRIu32 ",", nonce);
-//
-//    }
-
     virtual void endBlock(
-        const uint8_t *p
+        const Block *b
     )
     {
         // Number of transactions
@@ -233,11 +163,12 @@ struct CSVDump:public Callback
 
         // Value of output transactions
         fprintf(blockFile, "%" PRIu64 ",", totalBlkOutput);
+
         // TODO Value of fees
         fprintf(blockFile, "%" PRIu64 ",", totalBlkFees);
 
         // Size - off by 4?
-        fprintf(blockFile, "%" PRIu64 "\n", (uint64_t)(p - blkStart));
+        fprintf(blockFile, "%" PRIu64 "\n", (uint64_t)(b->data - blkStart));
     }
 
     virtual void startTX(
