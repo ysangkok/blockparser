@@ -61,6 +61,13 @@ all:parser
 	@${CPLUS} -MD ${INC} ${COPT}  -c cb/closure.cpp -o .objs/closure.o
 	@mv .objs/closure.d .deps
 
+.objs/csv.o : cb/csv.cpp
+	@echo c++ -- cb/csv.cpp
+	@mkdir -p .deps
+	@mkdir -p .objs
+	@${CPLUS} -MD ${INC} ${COPT}  -c cb/csv.cpp -o .objs/csv.o
+	@mv .objs/csv.d .deps
+
 .objs/dumpTX.o : cb/dumpTX.cpp
 	@echo c++ -- cb/dumpTX.cpp
 	@mkdir -p .deps
@@ -163,6 +170,7 @@ OBJS=                       \
     .objs/allBalances.o     \
     .objs/callback.o        \
     .objs/closure.o         \
+    .objs/csv.o             \
     .objs/dumpTX.o          \
     .objs/help.o            \
     .objs/opcodes.o         \
