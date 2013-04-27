@@ -10,6 +10,7 @@ INC =                           \
 #        -DLITECOIN              \
 
 COPT =                          \
+        -pg                     \
         -g0                     \
         -O6                     \
         -m64                    \
@@ -27,12 +28,12 @@ COPT =                          \
         -Wformat-security       \
         -Wstrict-aliasing=2     \
         -Wno-variadic-macros    \
-        -fomit-frame-pointer    \
+#        -fomit-frame-pointer    \
         -Wno-unused-variable    \
         -Wno-unused-parameter   \
 
-LOPT =                          \
-    -s                          \
+#LOPT =                          \
+#    -s                          \
 
 LIBS =                          \
     -lcrypto                    \

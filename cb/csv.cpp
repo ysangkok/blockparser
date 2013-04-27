@@ -76,7 +76,7 @@ struct CSVDump:public Callback
         inputID = 0;
         outputID = 0;
 
-        static uint64_t sz = 64 * 1000 * 1000;
+        static uint64_t sz = 48 * 1000 * 1000;
         outputMap.setEmptyKey(empty);
         outputMap.resize(sz);
 
@@ -250,22 +250,9 @@ struct CSVDump:public Callback
         totalTxOutput += value;
         totalBlkOutput += value;
 
-        // ID
-        fprintf(outputFile, "%" PRIu64 ",", outputID);
-
-        // Transaction ID
-        fprintf(outputFile, "%" PRIu64 ",", txID);
-
-        // Index
-        fprintf(outputFile, "%" PRIu64 ",", outputIndex);
-
-        // Value
-        fprintf(outputFile, "%" PRIu64 ",", value);
-
         // Script
         uint8_t buf[1 + 2*outputScriptSize];
         toHex(buf, outputScript, outputScriptSize);
-        fprintf(outputFile, "\"%s\",", buf);
 
         // Receiving address
         uint8_t address[40];
@@ -275,7 +262,8 @@ struct CSVDump:public Callback
         uint160_t pubKeyHash;
         int type = solveOutputScript(pubKeyHash.v, outputScript, outputScriptSize, addrType);
         if(likely(0<=type)) hash160ToAddr(address, pubKeyHash.v);
-        fprintf(outputFile, "%s\n", address);
+
+        fprintf(outputFile, "%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",\"%s\",\"%s\"\n", outputID, txID, outputIndex, value, buf, address);
 
         // Store output so that we can look it up when it becomes an input
         uint32_t oi = outputIndex;
@@ -318,13 +306,10 @@ struct CSVDump:public Callback
         totalBlkInput += value;
 
         // ID
-        fprintf(inputFile, "%" PRIu64 ",", inputID++);
 
         // Transaction ID
-        fprintf(inputFile, "%" PRIu64 ",", txID);
 
         // Index
-        fprintf(inputFile, "%" PRIu64 ",", inputIndex);
 
         // Transaction output ID
         uint256_t h;
@@ -335,15 +320,12 @@ struct CSVDump:public Callback
         h32[0] ^= oi;
         auto src = outputMap.find(h.v);
         if(outputMap.end()==src) errFatal("unconnected input");
-        fprintf(inputFile, "%" PRIu64 ",", src->second);
-
-        // Transaction output index
-        fprintf(inputFile, "%" PRIu64 ",", outputIndex);
 
         // Script
         uint8_t buf[1 + 2*inputScriptSize];
         toHex(buf, inputScript, inputScriptSize);
-        fprintf(inputFile, "\"%s\"\n", buf);
+
+        fprintf(inputFile, "%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",\"%s\"\n", inputID++, txID, inputIndex, src->second, outputIndex, buf);
     }
 
     virtual void wrapup()
