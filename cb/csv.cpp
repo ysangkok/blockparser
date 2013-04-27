@@ -76,7 +76,7 @@ struct CSVDump:public Callback
         inputID = 0;
         outputID = 0;
 
-        static uint64_t sz = 32 * 1000 * 1000;
+        static uint64_t sz = 64 * 1000 * 1000;
         outputMap.setEmptyKey(empty);
         outputMap.resize(sz);
 
@@ -223,7 +223,9 @@ struct CSVDump:public Callback
         fprintf(txFile, "%" PRIu64 ",", totalTxOutput);
 
         // Value of fees
-        fprintf(txFile, "%" PRIu64 ",", totalTxInput - totalTxOutput);
+        // TODO Fix this
+//        fprintf(txFile, "%" PRIu64 ",", totalTxInput - totalTxOutput);
+        fprintf(txFile, "%" PRIu64 ",", 0);
 
         // Lock time
         LOAD(uint32_t, lockTime, p);
@@ -261,13 +263,9 @@ struct CSVDump:public Callback
         fprintf(outputFile, "%" PRIu64 ",", value);
 
         // Script
-        fputc('"', outputFile);
-        for (uint64_t i = 0; i < outputScriptSize; i++)
-        {
-          fprintf(outputFile, "%02x", outputScript[i]);
-        }
-        fputc('"', outputFile);
-        fputc(',', outputFile);
+        uint8_t buf[1 + 2*outputScriptSize];
+        toHex(buf, outputScript, outputScriptSize);
+        fprintf(outputFile, "\"%s\",", buf);
 
         // Receiving address
         uint8_t address[40];
@@ -343,13 +341,9 @@ struct CSVDump:public Callback
         fprintf(inputFile, "%" PRIu64 ",", outputIndex);
 
         // Script
-        fputc('"', inputFile);
-        for (uint64_t i = 0; i < inputScriptSize; i++)
-        {
-          fprintf(inputFile, "%02x", inputScript[i]);
-        }
-        fputc('"', inputFile);
-        fputc('\n', inputFile);
+        uint8_t buf[1 + 2*inputScriptSize];
+        toHex(buf, inputScript, inputScriptSize);
+        fprintf(inputFile, "\"%s\"\n", buf);
     }
 
     virtual void wrapup()
