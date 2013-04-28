@@ -20,8 +20,6 @@ struct CSVDump:public Callback
 
     uint64_t txID;
     uint64_t blkID;
-    uint64_t inputID;
-    uint64_t outputID;
     int64_t cutoffBlock;
     OutputMap outputMap;
     optparse::OptionParser parser;
@@ -73,8 +71,6 @@ struct CSVDump:public Callback
     {
         txID = 0;
         blkID = 0;
-        inputID = 0;
-        outputID = 0;
 
         static uint64_t sz = 48 * 1000 * 1000;
         outputMap.setEmptyKey(empty);
@@ -83,23 +79,23 @@ struct CSVDump:public Callback
         optparse::Values &values = parser.parse_args(argc, argv);
         cutoffBlock = values.get("atBlock");
 
-        info("dumping the blockchain ...");
-
-        txFile = fopen("transactions.csv", "w");
-        if(!txFile) sysErrFatal("couldn't open file txs.csv for writing\n");
-        fprintf(txFile, "ID,Hash,Version,BlockId,NumInputs,NumOutputs,OutputValue,FeesValue,LockTime,Size\n");
+        info("Dumping the blockchain ...");
 
         blockFile = fopen("blocks.csv", "w");
         if(!blockFile) sysErrFatal("couldn't open file blocks.csv for writing\n");
         fprintf(blockFile, "ID,Hash,Version,Timestamp,Nonce,Difficulty,Merkle,NumTransactions,OutputValue,FeesValue,Size\n");
 
-        inputFile = fopen("inputs.csv", "w");
-        if(!inputFile) sysErrFatal("couldn't open file inputs.csv for writing\n");
-        fprintf(inputFile, "ID,TransactionId,Index,OutputID,OutputIndex,Script\n");
+        txFile = fopen("transactions.csv", "w");
+        if(!txFile) sysErrFatal("couldn't open file txs.csv for writing\n");
+        fprintf(txFile, "ID,Hash,Version,BlockId,NumInputs,NumOutputs,OutputValue,FeesValue,LockTime,Size\n");
 
         outputFile = fopen("outputs.csv", "w");
         if(!outputFile) sysErrFatal("couldn't open file outputs.csv for writing\n");
-        fprintf(outputFile, "ID,TransactionId,Index,Value,Script,ReceivingAddress\n");
+        fprintf(outputFile, "TransactionId,Index,Value,Script,ReceivingAddress,InputTxHash,InputTxIndex\n");
+
+        inputFile = fopen("inputs.csv", "w");
+        if(!inputFile) sysErrFatal("couldn't open file inputs.csv for writing\n");
+        fprintf(inputFile, "TransactionId,Index,Script,OutputTxHash,OutputTxIndex\n");
 
         return 0;
     }
@@ -251,8 +247,8 @@ struct CSVDump:public Callback
         totalBlkOutput += value;
 
         // Script
-        uint8_t buf[1 + 2*outputScriptSize];
-        toHex(buf, outputScript, outputScriptSize);
+        uint8_t script[1 + 2*outputScriptSize];
+        toHex(script, outputScript, outputScriptSize);
 
         // Receiving address
         uint8_t address[40];
@@ -263,16 +259,8 @@ struct CSVDump:public Callback
         int type = solveOutputScript(pubKeyHash.v, outputScript, outputScriptSize, addrType);
         if(likely(0<=type)) hash160ToAddr(address, pubKeyHash.v);
 
-        fprintf(outputFile, "%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",\"%s\",\"%s\"\n", outputID, txID, outputIndex, value, buf, address);
-
-        // Store output so that we can look it up when it becomes an input
-        uint32_t oi = outputIndex;
-        uint8_t *h = allocHash256();
-        memcpy(h, txHash, kSHA256ByteSize);
-        uintptr_t ih = reinterpret_cast<uintptr_t>(h);
-        uint32_t *h32 = reinterpret_cast<uint32_t*>(ih);
-        h32[0] ^= oi;
-        outputMap[h] = outputID++;
+        // N.B. Input hash and index are NULL at this stage
+        fprintf(outputFile, "%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",\"%s\",\"%s\",,\n", txID, outputIndex, value, script, address);
     }
 
     virtual void startInput(
@@ -305,27 +293,15 @@ struct CSVDump:public Callback
         totalTxInput += value;
         totalBlkInput += value;
 
-        // ID
-
-        // Transaction ID
-
-        // Index
-
-        // Transaction output ID
-        uint256_t h;
-        uint32_t oi = outputIndex;
-        memcpy(h.v, upTXHash, kSHA256ByteSize);
-        uintptr_t ih = reinterpret_cast<uintptr_t>(h.v);
-        uint32_t *h32 = reinterpret_cast<uint32_t*>(ih);
-        h32[0] ^= oi;
-        auto src = outputMap.find(h.v);
-        if(outputMap.end()==src) errFatal("unconnected input");
+        // outputTxHash
+        uint8_t outputTxHash[1 + 2*kSHA256ByteSize];
+        toHex(outputTxHash, upTXHash);
 
         // Script
-        uint8_t buf[1 + 2*inputScriptSize];
-        toHex(buf, inputScript, inputScriptSize);
+        uint8_t script[1 + 2*inputScriptSize];
+        toHex(script, inputScript, inputScriptSize);
 
-        fprintf(inputFile, "%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",\"%s\"\n", inputID++, txID, inputIndex, src->second, outputIndex, buf);
+        fprintf(inputFile, "%" PRIu64 ",%" PRIu64 ",\"%s\",\"%s\",%" PRIu64 "\n", txID, inputIndex, script, outputTxHash, outputIndex);
     }
 
     virtual void wrapup()

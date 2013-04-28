@@ -1,8 +1,8 @@
 /* vim: set tabstop=21 expandtab syntax=sql: */
 
 CREATE TABLE t_block (
-  f_id               BIGINT PRIMARY KEY
- ,f_hash             TEXT NOT NULL
+  f_id               BIGINT UNIQUE PRIMARY KEY
+ ,f_hash             TEXT UNIQUE NOT NULL
  ,f_version          INT NOT NULL
  ,f_timestamp        TIMESTAMP WITHOUT TIME ZONE NOT NULL
  ,f_nonce            BIGINT NOT NULL
@@ -15,8 +15,8 @@ CREATE TABLE t_block (
 );
 
 CREATE TABLE t_transaction (
-  f_id               BIGINT PRIMARY KEY
- ,f_hash             TEXT NOT NULL
+  f_id               BIGINT UNIQUE PRIMARY KEY
+ ,f_hash             TEXT UNIQUE NOT NULL
  ,f_version          INT NOT NULL
  ,f_blockid          BIGINT REFERENCES t_block(f_id)
  ,f_numinputs        BIGINT NOT NULL
@@ -26,21 +26,39 @@ CREATE TABLE t_transaction (
  ,f_locktime         BIGINT NOT NULL
  ,f_size             BIGINT NOT NULL
 );
+CREATE INDEX t_transaction_hash_idx ON t_transaction(f_hash);
 
 CREATE TABLE t_output (
-  f_id               BIGINT PRIMARY KEY
- ,f_transactionid    BIGINT REFERENCES t_transaction(f_id)
+  f_transactionid    BIGINT REFERENCES t_transaction(f_id) NOT NULL
  ,f_index            INT NOT NULL
  ,f_value            BIGINT NOT NULL
  ,f_script           TEXT NOT NULL
  ,f_receivingaddress TEXT NOT NULL
+ ,f_inputtxhash      TEXT REFERENCES t_transaction(f_hash)
+ ,f_inputtxindex     INT
 );
+CREATE INDEX t_output_input_idx ON t_output(f_inputtxhash);
+CREATE INDEX t_output_receivingaddress_idx ON t_output(f_receivingaddress);
 
 CREATE TABLE t_input (
-  f_id               BIGINT PRIMARY KEY
- ,f_transactionid    BIGINT REFERENCES t_transaction(f_id)
+  f_transactionid    BIGINT REFERENCES t_transaction(f_id) NOT NULL
  ,f_index            INT NOT NULL
- ,f_outputid         BIGINT REFERENCES t_output(f_id)
- ,f_outputindex      INT NOT NULL
  ,f_script           TEXT NOT NULL
+ ,f_outputtxhash     TEXT REFERENCES t_transaction(f_hash) NOT NULL
+ ,f_outputtxindex    INT NOT NULL
 );
+CREATE INDEX t_input_output_idx ON t_input(f_outputtxhash);
+
+/* Every time we get a new input we link an existing output to it */
+CREATE OR REPLACE FUNCTION link_txs() RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE t_output
+  SET f_inputtxhash = (SELECT f_hash FROM t_transaction WHERE f_id = NEW.f_transactionid)
+     ,f_inputtxindex = NEW.f_index
+  WHERE f_transactionid = (SELECT f_id FROM t_transaction WHERE f_hash = NEW.f_outputtxhash)
+    AND f_index = NEW.f_outputtxindex;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER t_input_linkoutput BEFORE INSERT ON t_input
+  FOR EACH ROW EXECUTE PROCEDURE link_txs();
