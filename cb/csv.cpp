@@ -21,11 +21,10 @@ struct CSVDump:public Callback
     uint64_t txID;
     uint64_t blkID;
     int64_t cutoffBlock;
-    OutputMap outputMap;
     optparse::OptionParser parser;
 
-    // Reference information
-    const uint8_t *blkStart;
+    // Counters used across functions
+    uint64_t blkSize;
     uint64_t totalBlkInput;
     uint64_t totalBlkOutput;
     uint64_t numBlkTxs;
@@ -39,7 +38,7 @@ struct CSVDump:public Callback
     CSVDump()
     {
         parser
-            .usage("[options] [list of addresses to restrict output to]")
+            .usage("[options]")
             .version("")
             .description("create an CSV dump of the blockchain")
             .epilog("")
@@ -71,10 +70,6 @@ struct CSVDump:public Callback
     {
         txID = 0;
         blkID = 0;
-
-        static uint64_t sz = 48 * 1000 * 1000;
-        outputMap.setEmptyKey(empty);
-        outputMap.resize(sz);
 
         optparse::Values &values = parser.parse_args(argc, argv);
         cutoffBlock = values.get("atBlock");
@@ -112,7 +107,9 @@ struct CSVDump:public Callback
 
         const uint8_t *p = b->data;
 
-        blkStart = p;
+        // Total block size is 81 bytes plus transactions
+        blkSize = 81;
+
         totalBlkInput = 0;
         totalBlkOutput = 0;
         numBlkTxs = 0;
@@ -139,7 +136,6 @@ struct CSVDump:public Callback
         time_t blockTime = blkTime;
         char tbuf[23];
         strftime(tbuf, sizeof tbuf, "%FT%TZ", gmtime(&blockTime));
-        //strftime(buf, sizeof tbuf, "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
 
         fprintf(blockFile, "\"%s\",", tbuf);
 
@@ -170,8 +166,24 @@ struct CSVDump:public Callback
         // Value of fees
         fprintf(blockFile, "%" PRIu64 ",", totalBlkInput - totalBlkOutput);
 
-        // TODO Size - off by 4?
-        fprintf(blockFile, "%" PRIu64 "\n", (uint64_t)(b->data - blkStart));
+        // Size; depends on number of transactions
+        if (numBlkTxs < 253)
+        {
+            // Nothing to do
+        }
+        else if (numBlkTxs < 65536)
+        {
+            blkSize += 2;
+        }
+        else if (numBlkTxs < 4294967296L)
+        {
+            blkSize += 4;
+        }
+        else
+        {
+            blkSize += 8;
+        }
+        fprintf(blockFile, "%" PRIu64 "\n", blkSize);
 
         blkID++;
     }
@@ -227,8 +239,11 @@ struct CSVDump:public Callback
         LOAD(uint32_t, lockTime, p);
         fprintf(txFile, "%" PRIu32 ",", lockTime);
 
-        // Size - off by 4?
-        fprintf(txFile, "%" PRIu64 "\n", (uint64_t)(p - txStart));
+        // Size
+        // p is 4 bigger than it should be due to above lock time load
+        uint64_t txSize = p - 4 - txStart;
+        blkSize += txSize;
+        fprintf(txFile, "%" PRIu64 "\n", txSize);
 
         txID++;
     }
