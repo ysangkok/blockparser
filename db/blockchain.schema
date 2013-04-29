@@ -1,5 +1,6 @@
 /* vim: set tabstop=21 expandtab syntax=sql: */
 
+BEGIN;
 CREATE TABLE t_block (
   f_id               BIGINT UNIQUE PRIMARY KEY
  ,f_hash             TEXT UNIQUE NOT NULL
@@ -13,12 +14,15 @@ CREATE TABLE t_block (
  ,f_feesvalue        BIGINT NOT NULL
  ,f_size             BIGINT NOT NULL
 );
+\copy t_block from 'blocks.csv' WITH (FORMAT CSV, HEADER);
+COMMIT;
 
+BEGIN;
 CREATE TABLE t_transaction (
   f_id               BIGINT UNIQUE PRIMARY KEY
  ,f_hash             TEXT UNIQUE NOT NULL
  ,f_version          INT NOT NULL
- ,f_blockid          BIGINT REFERENCES t_block(f_id)
+ ,f_blockid          BIGINT NOT NULL
  ,f_numinputs        BIGINT NOT NULL
  ,f_numoutputs       BIGINT NOT NULL
  ,f_outputvalue      BIGINT NOT NULL
@@ -26,29 +30,36 @@ CREATE TABLE t_transaction (
  ,f_locktime         BIGINT NOT NULL
  ,f_size             BIGINT NOT NULL
 );
-CREATE INDEX t_transaction_hash_idx ON t_transaction(f_hash);
+\copy t_transaction from 'transactions.csv' WITH (FORMAT CSV, HEADER);
+COMMIT;
+ALTER TABLE t_transaction ADD FOREIGN KEY(f_blockid) REFERENCES t_block(f_id);
 
+BEGIN;
 CREATE TABLE t_output (
-  f_transactionid    BIGINT REFERENCES t_transaction(f_id) NOT NULL
+  f_transactionid    BIGINT NOT NULL
  ,f_index            INT NOT NULL
  ,f_value            BIGINT NOT NULL
  ,f_script           TEXT NOT NULL
  ,f_receivingaddress TEXT NOT NULL
- ,f_inputtxhash      TEXT REFERENCES t_transaction(f_hash)
+ ,f_inputtxhash      TEXT
  ,f_inputtxindex     INT
 );
+\copy t_output from 'outputs.csv' WITH (FORMAT CSV, HEADER);
+COMMIT;
+ALTER TABLE t_output ADD FOREIGN KEY(f_transactionid) REFERENCES t_transaction(f_id);
+ALTER TABLE t_output ADD FOREIGN KEY(f_inputtxhash) REFERENCES t_transaction(f_hash);
 CREATE INDEX t_output_input_idx ON t_output(f_inputtxhash);
 CREATE INDEX t_output_receivingaddress_idx ON t_output(f_receivingaddress);
+CREATE INDEX t_output_linktx_idx ON t_output(f_transactionid, f_index);
 
+BEGIN;
 CREATE TABLE t_input (
-  f_transactionid    BIGINT REFERENCES t_transaction(f_id) NOT NULL
+  f_transactionid    BIGINT NOT NULL
  ,f_index            INT NOT NULL
  ,f_script           TEXT NOT NULL
- ,f_outputtxhash     TEXT REFERENCES t_transaction(f_hash) NOT NULL
+ ,f_outputtxhash     TEXT NOT NULL
  ,f_outputtxindex    INT NOT NULL
 );
-CREATE INDEX t_input_output_idx ON t_input(f_outputtxhash);
-
 /* Every time we get a new input we link an existing output to it */
 CREATE OR REPLACE FUNCTION link_txs() RETURNS TRIGGER AS $$
 BEGIN
@@ -62,3 +73,8 @@ END;
 $$ LANGUAGE plpgsql;
 CREATE TRIGGER t_input_linkoutput BEFORE INSERT ON t_input
   FOR EACH ROW EXECUTE PROCEDURE link_txs();
+\copy t_input from 'inputs.csv' WITH (FORMAT CSV, HEADER);
+COMMIT;
+ALTER TABLE t_input ADD FOREIGN KEY(f_transactionid) REFERENCES t_transaction(f_id);
+ALTER TABLE t_input ADD FOREIGN KEY(f_outputtxhash) REFERENCES t_transaction(f_hash);
+CREATE INDEX t_input_output_idx ON t_input(f_outputtxhash);

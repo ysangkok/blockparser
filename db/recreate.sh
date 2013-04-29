@@ -1,5 +1,5 @@
-#!/bin/sh
+#!/bin/bash
 
 dropdb -h localhost -U blockchain blockchain
 createdb -E UTF-8 -h localhost -U blockchain blockchain
-psql -h localhost -U blockchain blockchain <blockchain.schema
+time psql -a -h localhost -U blockchain blockchain <~/blockparser/db/blockchain.schema
