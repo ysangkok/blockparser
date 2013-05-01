@@ -48,9 +48,6 @@ CREATE TABLE t_output (
 COMMIT;
 ALTER TABLE t_output ADD FOREIGN KEY(f_transactionid) REFERENCES t_transaction(f_id);
 ALTER TABLE t_output ADD FOREIGN KEY(f_inputtxhash) REFERENCES t_transaction(f_hash);
-CREATE INDEX t_output_input_idx ON t_output(f_inputtxhash);
-CREATE INDEX t_output_receivingaddress_idx ON t_output(f_receivingaddress);
-CREATE INDEX t_output_linktx_idx ON t_output(f_transactionid, f_index);
 
 BEGIN;
 CREATE TABLE t_input (
@@ -60,6 +57,8 @@ CREATE TABLE t_input (
  ,f_outputtxhash     TEXT NOT NULL
  ,f_outputtxindex    INT NOT NULL
 );
+\copy t_input from 'inputs.csv' WITH (FORMAT CSV, HEADER);
+COMMIT;
 /* Every time we get a new input we link an existing output to it */
 CREATE OR REPLACE FUNCTION link_txs() RETURNS TRIGGER AS $$
 BEGIN
@@ -73,8 +72,23 @@ END;
 $$ LANGUAGE plpgsql;
 CREATE TRIGGER t_input_linkoutput BEFORE INSERT ON t_input
   FOR EACH ROW EXECUTE PROCEDURE link_txs();
-\copy t_input from 'inputs.csv' WITH (FORMAT CSV, HEADER);
-COMMIT;
 ALTER TABLE t_input ADD FOREIGN KEY(f_transactionid) REFERENCES t_transaction(f_id);
 ALTER TABLE t_input ADD FOREIGN KEY(f_outputtxhash) REFERENCES t_transaction(f_hash);
-CREATE INDEX t_input_output_idx ON t_input(f_outputtxhash);
+CREATE INDEX t_input_output_idx ON t_input(f_outputtxhash, f_outputtxindex);
+CREATE INDEX t_input_transactionid_idx ON t_input(f_transactionid);
+
+/* Update existing transactions */
+UPDATE t_output
+SET f_inputtxhash = data.f_inputtxhash,
+    f_inputtxindex = data.f_inputtxindex
+FROM (SELECT f_hash AS f_inputtxhash, f_index AS f_inputtxindex, f_outputtxhash, f_outputtxindex
+      FROM t_input LEFT JOIN t_transaction
+      ON t_input.f_transactionid = t_transaction.f_id) data
+WHERE t_output.f_transactionid = (SELECT f_id FROM t_transaction WHERE f_hash = data.f_outputtxhash)
+AND t_output.f_index = data.f_outputtxindex;
+
+/* Add output indices */
+CREATE INDEX t_output_input_idx ON t_output(f_inputtxhash);
+CREATE INDEX t_output_receivingaddress_idx ON t_output(f_receivingaddress);
+CREATE INDEX t_output_linktx_idx ON t_output(f_transactionid, f_index);
+
