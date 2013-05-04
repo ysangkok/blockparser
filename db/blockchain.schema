@@ -16,6 +16,7 @@ CREATE TABLE t_block (
 );
 \copy t_block from 'blocks.csv' WITH (FORMAT CSV, HEADER);
 COMMIT;
+CREATE INDEX t_block_id_timestamp_idx ON t_block(f_id, f_timestamp);
 
 BEGIN;
 CREATE TABLE t_transaction (
@@ -88,7 +89,155 @@ WHERE t_output.f_transactionid = (SELECT f_id FROM t_transaction WHERE f_hash = 
 AND t_output.f_index = data.f_outputtxindex;
 
 /* Add output indices */
-CREATE INDEX t_output_input_idx ON t_output(f_inputtxhash);
+CREATE INDEX t_output_input_null_idx ON t_output(f_inputtxhash) WHERE f_inputtxhash IS NULL;
+CREATE INDEX t_output_input_notnull_idx ON t_output(f_inputtxhash) WHERE f_inputtxhash IS NOT NULL;
 CREATE INDEX t_output_receivingaddress_idx ON t_output(f_receivingaddress);
 CREATE INDEX t_output_linktx_idx ON t_output(f_transactionid, f_index);
 
+/* Add summary tables */
+CREATE TABLE t_daily (
+  f_date             DATE UNIQUE PRIMARY KEY NOT NULL
+ ,f_numblocks        BIGINT
+ ,f_numtxs           BIGINT
+ ,f_totalvalue       BIGINT
+ ,f_totalfees        BIGINT
+ ,f_avgtxsperblock   BIGINT
+ ,f_avgfeesperblock  BIGINT
+ ,f_avgblocksize     BIGINT
+ ,f_numutxos         BIGINT
+);
+
+CREATE TABLE t_weekly (
+  f_date             DATE UNIQUE PRIMARY KEY NOT NULL
+ ,f_numblocks        BIGINT
+ ,f_numtxs           BIGINT
+ ,f_totalvalue       BIGINT
+ ,f_totalfees        BIGINT
+ ,f_avgtxsperblock   BIGINT
+ ,f_avgfeesperblock  BIGINT
+ ,f_avgblocksize     BIGINT
+);
+
+CREATE TABLE t_monthly (
+  f_date             DATE UNIQUE PRIMARY KEY NOT NULL
+ ,f_numblocks        BIGINT
+ ,f_numtxs           BIGINT
+ ,f_totalvalue       BIGINT
+ ,f_totalfees        BIGINT
+ ,f_avgtxsperblock   BIGINT
+ ,f_avgfeesperblock  BIGINT
+ ,f_avgblocksize     BIGINT
+);
+
+CREATE OR REPLACE FUNCTION daily_stats(DATE) RETURNS void AS $$
+  BEGIN
+    WITH t_blockstats AS (SELECT COUNT(1) AS f_numblocks
+                                ,SUM(f_numtransactions) AS f_numtxs
+                                ,SUM(f_outputvalue) AS f_totalvalue
+                                ,SUM(f_feesvalue) AS f_totalfees
+                                ,AVG(f_size)::BIGINT AS f_avgblocksize
+                          FROM t_block
+                          WHERE f_timestamp::DATE = $1),
+         t_transactionstats AS (SELECT COUNT(*) AS f_numutxos
+                                FROM t_output
+                                WHERE f_inputtxhash IS NULL)
+    INSERT INTO t_daily(f_date
+                       ,f_numblocks
+                       ,f_numtxs
+                       ,f_totalvalue
+                       ,f_totalfees
+                       ,f_avgtxsperblock
+                       ,f_avgfeesperblock
+                       ,f_avgblocksize
+                       ,f_numutxos)
+    SELECT $1
+          ,f_numblocks
+          ,f_numtxs
+          ,f_totalvalue
+          ,f_totalfees
+          ,(f_numtxs/f_numblocks)::BIGINT
+          ,(f_totalfees/f_numblocks)::BIGINT
+          ,f_avgblocksize
+          ,f_numutxos
+    FROM t_blockstats;
+  END;
+$$ LANGUAGE plpgsql;
+
+/* Create stats for w/c the input date */
+CREATE OR REPLACE FUNCTION weekly_stats(DATE) RETURNS void AS $$
+  BEGIN
+    WITH t_blockstats AS (SELECT COUNT(1) AS f_numblocks
+                                ,SUM(f_numtransactions) AS f_numtxs
+                                ,SUM(f_outputvalue) AS f_totalvalue
+                                ,SUM(f_feesvalue) AS f_totalfees
+                                ,AVG(f_size)::BIGINT AS f_avgblocksize
+                          FROM t_block
+                          WHERE f_timestamp::DATE >= $1 AND f_timestamp::DATE < ($1 + '1 week'::interval)::date)
+    INSERT INTO t_weekly(f_date
+                        ,f_numblocks
+                        ,f_numtxs
+                        ,f_totalvalue
+                        ,f_totalfees
+                        ,f_avgtxsperblock
+                        ,f_avgfeesperblock
+                        ,f_avgblocksize)
+    SELECT $1
+          ,f_numblocks
+          ,f_numtxs
+          ,f_totalvalue
+          ,f_totalfees
+          ,(f_numtxs/f_numblocks)::BIGINT
+          ,(f_totalfees/f_numblocks)::BIGINT
+          ,f_avgblocksize
+    FROM t_blockstats;
+  END;
+$$ LANGUAGE plpgsql;
+
+/* Create stats for m/c the input date */
+CREATE OR REPLACE FUNCTION monthly_stats(DATE) RETURNS void AS $$
+  BEGIN
+    WITH t_blockstats AS (SELECT COUNT(1) AS f_numblocks
+                                ,SUM(f_numtransactions) AS f_numtxs
+                                ,SUM(f_outputvalue) AS f_totalvalue
+                                ,SUM(f_feesvalue) AS f_totalfees
+                                ,AVG(f_size)::BIGINT AS f_avgblocksize
+                          FROM t_block
+                          WHERE f_timestamp::DATE >= $1 AND f_timestamp::DATE < ($1 + '1 month'::interval)::date)
+    INSERT INTO t_monthly(f_date
+                         ,f_numblocks
+                         ,f_numtxs
+                         ,f_totalvalue
+                         ,f_totalfees
+                         ,f_avgtxsperblock
+                         ,f_avgfeesperblock
+                         ,f_avgblocksize)
+    SELECT $1
+          ,f_numblocks
+          ,f_numtxs
+          ,f_totalvalue
+          ,f_totalfees
+          ,(f_numtxs/f_numblocks)::BIGINT
+          ,(f_totalfees/f_numblocks)::BIGINT
+          ,f_avgblocksize
+    FROM t_blockstats;
+  END;
+$$ LANGUAGE plpgsql;
+
+WITH t_minblock AS (SELECT min(f_id) AS f_id
+                    FROM t_block
+                    WHERE f_timestamp > '2013-05-01T00:00:00'),
+     t_mintransaction AS (SELECT min(t_transaction.f_id) AS f_id
+                          FROM t_transaction, t_minblock
+                          WHERE f_blockid = t_minblock.f_id),
+     t_numutxos AS (SELECT COUNT(1) AS f_num
+                    FROM t_output
+                    WHERE f_inputtxhash IS NULL),
+     t_numstxos AS (SELECT COUNT(1) AS f_num
+                    FROM t_output, t_mintransaction
+                    WHERE f_inputtxhash IS NOT NULL
+                    AND f_transactionid > t_mintransaction.f_id),
+     t_numtxis AS (SELECT COUNT(1) AS f_num
+                   FROM t_input, t_mintransaction
+                   WHERE f_transactionid > t_mintransaction.f_id)
+SELECT t_numutxos.f_num + t_numstxos.f_num - t_numtxis.f_num AS f_res
+FROM t_numutxos, t_numstxos, t_numtxis;
