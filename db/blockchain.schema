@@ -105,6 +105,10 @@ CREATE TABLE t_daily (
  ,f_avgfeesperblock  BIGINT
  ,f_avgblocksize     BIGINT
  ,f_numutxos         BIGINT
+ ,f_utxonumdistrib   BIGINT[]
+ ,f_utxovaluedistrib BIGINT[]
+ ,f_blocksizedistrib BIGINT[]
+ ,f_blocktimedistrib BIGINT[]
 );
 
 CREATE TABLE t_weekly (
@@ -138,9 +142,7 @@ CREATE OR REPLACE FUNCTION daily_stats(DATE) RETURNS void AS $$
                                 ,AVG(f_size)::BIGINT AS f_avgblocksize
                           FROM t_block
                           WHERE f_timestamp::DATE = $1),
-         t_transactionstats AS (SELECT COUNT(*) AS f_numutxos
-                                FROM t_output
-                                WHERE f_inputtxhash IS NULL)
+         t_utxodistrib AS (SELECT * FROM utxo_distribution($1))
     INSERT INTO t_daily(f_date
                        ,f_numblocks
                        ,f_numtxs
@@ -149,7 +151,11 @@ CREATE OR REPLACE FUNCTION daily_stats(DATE) RETURNS void AS $$
                        ,f_avgtxsperblock
                        ,f_avgfeesperblock
                        ,f_avgblocksize
-                       ,f_numutxos)
+                       ,f_numutxos
+                       ,f_utxonumdistrib
+                       ,f_utxovaluedistrib
+                       ,f_blocksizedistrib
+                       ,f_blocktimedistrib)
     SELECT $1
           ,f_numblocks
           ,f_numtxs
@@ -158,8 +164,12 @@ CREATE OR REPLACE FUNCTION daily_stats(DATE) RETURNS void AS $$
           ,(f_numtxs/f_numblocks)::BIGINT
           ,(f_totalfees/f_numblocks)::BIGINT
           ,f_avgblocksize
-          ,f_numutxos
-    FROM t_blockstats;
+          ,(SELECT utxo_count($1))
+          ,t_utxodistrib.f_numa
+          ,t_utxodistrib.f_valuea
+          ,(SELECT blocksize_distribution($1, ($1 + interval '1 day')::date))
+          ,(SELECT blocktime_distribution($1, ($1 + interval '1 day')::date))
+    FROM t_blockstats, t_utxodistrib;
   END;
 $$ LANGUAGE plpgsql;
 
@@ -172,7 +182,7 @@ CREATE OR REPLACE FUNCTION weekly_stats(DATE) RETURNS void AS $$
                                 ,SUM(f_feesvalue) AS f_totalfees
                                 ,AVG(f_size)::BIGINT AS f_avgblocksize
                           FROM t_block
-                          WHERE f_timestamp::DATE >= $1 AND f_timestamp::DATE < ($1 + '1 week'::interval)::date)
+                          WHERE f_timestamp::DATE >= $1 AND f_timestamp::DATE < ($1 + '1 week'::interval)::date),
     INSERT INTO t_weekly(f_date
                         ,f_numblocks
                         ,f_numtxs
@@ -223,21 +233,111 @@ CREATE OR REPLACE FUNCTION monthly_stats(DATE) RETURNS void AS $$
   END;
 $$ LANGUAGE plpgsql;
 
-WITH t_minblock AS (SELECT min(f_id) AS f_id
-                    FROM t_block
-                    WHERE f_timestamp > '2013-05-01T00:00:00'),
-     t_mintransaction AS (SELECT min(t_transaction.f_id) AS f_id
-                          FROM t_transaction, t_minblock
-                          WHERE f_blockid = t_minblock.f_id),
-     t_numutxos AS (SELECT COUNT(1) AS f_num
-                    FROM t_output
-                    WHERE f_inputtxhash IS NULL),
-     t_numstxos AS (SELECT COUNT(1) AS f_num
-                    FROM t_output, t_mintransaction
-                    WHERE f_inputtxhash IS NOT NULL
-                    AND f_transactionid > t_mintransaction.f_id),
-     t_numtxis AS (SELECT COUNT(1) AS f_num
-                   FROM t_input, t_mintransaction
-                   WHERE f_transactionid > t_mintransaction.f_id)
-SELECT t_numutxos.f_num + t_numstxos.f_num - t_numtxis.f_num AS f_res
-FROM t_numutxos, t_numstxos, t_numtxis;
+/* Distribution of UTXOs.  If only BTC were divisible by 1,000,000,000... */
+CREATE OR REPLACE FUNCTION utxo_distribution(DATE) RETURNS TABLE(f_numa BIGINT[], f_valuea BIGINT[]) AS $$
+  BEGIN
+    RETURN QUERY WITH t_utxo AS (SELECT * FROM t_output WHERE f_inputtxhash IS NULL)
+    SELECT array_agg(f_num) AS f_numa, array_agg(f_value) AS f_valuea
+    FROM (SELECT f_num, f_value::BIGINT FROM (SELECT 'satoshi' AS f_range
+                                            ,1 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_utxo
+                                      WHERE f_value >= 0 AND f_value < 100
+                                      UNION
+                                      SELECT 'uBTC' AS f_range
+                                            ,2 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_utxo
+                                      WHERE f_value >= 100 AND f_value < 100000
+                                      UNION
+                                      SELECT 'mBTC' AS f_range
+                                            ,3 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_utxo
+                                      WHERE f_value >= 100000 AND f_value < 100000000
+                                      UNION
+                                      SELECT 'BTC' AS f_range
+                                            ,4 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_utxo
+                                      WHERE f_value >= 100000000 AND f_value < 100000000000
+                                      UNION
+                                      SELECT 'kBTC' AS f_range
+                                            ,5 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_utxo
+                                      WHERE f_value >= 100000000000 AND f_value < 100000000000000
+                                      UNION
+                                      SELECT 'MBTC' AS f_range
+                                            ,6 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_utxo
+                                      WHERE f_value >= 100000000000000) f_data
+          ORDER BY f_rangenum) f_outer;
+  END;
+$$ LANGUAGE plpgsql;
+
+/* Unspent transactino outputs at a given time */
+CREATE OR REPLACE FUNCTION utxo_count(DATE) RETURNS BIGINT AS $$
+  WITH t_transactionstats AS (SELECT COUNT(*) AS f_numutxos
+                              FROM t_output
+                              WHERE f_inputtxhash IS NULL),
+       t_minblock AS (SELECT min(f_id) AS f_id
+                      FROM t_block
+                     WHERE f_timestamp > $1::timestamp),
+       t_mintransaction AS (SELECT min(t_transaction.f_id) AS f_id
+                            FROM t_transaction, t_minblock
+                            WHERE f_blockid = t_minblock.f_id),
+       t_numutxos AS (SELECT COUNT(1) AS f_num
+                      FROM t_output
+                      WHERE f_inputtxhash IS NULL),
+       t_numstxos AS (SELECT COUNT(1) AS f_num
+                      FROM t_output, t_mintransaction
+                      WHERE f_inputtxhash IS NOT NULL
+                      AND f_transactionid > t_mintransaction.f_id),
+       t_numtxis AS (SELECT COUNT(1) AS f_num
+                     FROM t_input, t_mintransaction
+                     WHERE f_transactionid > t_mintransaction.f_id)
+  SELECT t_numutxos.f_num + t_numstxos.f_num - t_numtxis.f_num AS f_numutxos
+  FROM t_numutxos, t_numstxos, t_numtxis;
+$$ LANGUAGE sql;
+
+/* Size of blocks for a given time period */
+CREATE OR REPLACE FUNCTION blocksize_distribution(DATE, DATE) RETURNS TABLE(f_numa bigint[]) AS $$
+  BEGIN
+    RETURN QUERY
+      SELECT array_agg(COALESCE(t_blockdistrib.f_num, 0)) AS f_numa FROM generate_series(0,9) AS f_ref
+      LEFT JOIN (SELECT COUNT(1) AS f_num, f_size / 102400 AS f_range
+                 FROM t_block
+                 WHERE f_timestamp >= $1
+                   AND f_timestamp < $2
+                 GROUP BY f_size / 102400
+                 ORDER BY f_size / 102400) t_blockdistrib
+      ON f_ref = t_blockdistrib.f_range;
+  END;
+$$ LANGUAGE plpgsql;
+
+/* Time between successive blocks for a given time period */
+CREATE OR REPLACE FUNCTION blocktime_distribution(DATE, DATE) RETURNS TABLE(f_numa bigint[]) AS $$
+  BEGIN
+    RETURN QUERY
+      SELECT array_agg(COALESCE(t_blockdistrib.f_num, 0)) AS f_numa
+      FROM generate_series(0, 14) AS f_ref
+      LEFT JOIN (WITH t_range AS (SELECT (EXTRACT(EPOCH FROM (f_timestamp - LAG(f_timestamp) OVER (ORDER BY f_timestamp))) / 240)::int AS f_range
+                                  FROM t_block
+                                  WHERE f_timestamp >= $1
+                                    AND f_timestamp < $2)
+                 SELECT COUNT(1) AS f_num,
+                        CASE WHEN f_range <= 15 THEN f_range ELSE 15 END as f_range
+                 FROM t_range
+                 GROUP BY f_range
+                 ORDER BY f_range) t_blockdistrib
+      ON f_ref = t_blockdistrib.f_range;
+  END;
+$$ LANGUAGE plpgsql;
