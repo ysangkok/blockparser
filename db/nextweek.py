@@ -2,7 +2,13 @@
 
 import time
 import datetime
+from dateutil.relativedelta import relativedelta
 
-day = (24*60)*60*7
-tomorrow = datetime.datetime.fromtimestamp(time.time() + day)
-print tomorrow.strftime("%a, %d %b %Y")
+# Next Saturday
+today = datetime.datetime.today()
+weekday = today.weekday()
+addition = 5 - weekday
+if addition <= 0:
+  addition += 7
+nextweek = today + relativedelta(days=addition)
+print nextweek.strftime("%a, %d %b %Y")

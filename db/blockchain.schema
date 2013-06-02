@@ -283,6 +283,56 @@ CREATE OR REPLACE FUNCTION utxo_distribution(DATE) RETURNS TABLE(f_numa BIGINT[]
   END;
 $$ LANGUAGE plpgsql;
 
+/* Distribution of transaction outputs for a given date range */
+CREATE OR REPLACE FUNCTION txo_distribution(DATE, DATE) RETURNS TABLE(f_numa BIGINT[], f_valuea BIGINT[]) AS $$
+  BEGIN
+    RETURN QUERY WITH t_txo AS (SELECT * FROM t_output WHERE f_transactionid IN (SELECT f_id FROM t_transaction WHERE f_blockid IN (SELECT f_id FROM t_block WHERE f_timestamp > $1 AND f_timestamp < $2)))
+    SELECT array_agg(f_num) AS f_numa, array_agg(f_value) AS f_valuea
+    FROM (SELECT f_num, f_value::BIGINT FROM (SELECT 'satoshi' AS f_range
+                                            ,1 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_txo
+                                      WHERE f_value >= 0 AND f_value < 100
+                                      UNION
+                                      SELECT 'uBTC' AS f_range
+                                            ,2 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_txo
+                                      WHERE f_value >= 100 AND f_value < 100000
+                                      UNION
+                                      SELECT 'mBTC' AS f_range
+                                            ,3 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_txo
+                                      WHERE f_value >= 100000 AND f_value < 100000000
+                                      UNION
+                                      SELECT 'BTC' AS f_range
+                                            ,4 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_txo
+                                      WHERE f_value >= 100000000 AND f_value < 100000000000
+                                      UNION
+                                      SELECT 'kBTC' AS f_range
+                                            ,5 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_txo
+                                      WHERE f_value >= 100000000000 AND f_value < 100000000000000
+                                      UNION
+                                      SELECT 'MBTC' AS f_range
+                                            ,6 AS f_rangenum
+                                            ,COUNT(1) AS f_num
+                                            ,COALESCE(SUM(f_value), 0) AS f_value
+                                      FROM t_txo
+                                      WHERE f_value >= 100000000000000) f_data
+          ORDER BY f_rangenum) f_outer;
+  END;
+$$ LANGUAGE plpgsql;
+
 /* Unspent transactino outputs at a given time */
 CREATE OR REPLACE FUNCTION utxo_count(DATE) RETURNS BIGINT AS $$
   WITH t_transactionstats AS (SELECT COUNT(*) AS f_numutxos

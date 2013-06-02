@@ -36,11 +36,11 @@ FIRSTSTATS=`nextstats`
 rsync -avHz --delete data/ ks2.mcdee.net:/home/www/www.mcdee.net/bitcoin/data/
 
 NEXTMONTH=`~/blockparser/db/nextmonth.py`
-s3cmd sync -m application/json --add-header="Expires: ${NEXTMONTH} 01:00:00 GMT" data/*bymonth.json s3://charts.bconomy.com/data/
+s3cmd put -m application/json --add-header="Expires: ${NEXTMONTH} 01:00:00 GMT" data/*bymonth.json s3://charts.bconomy.com/data/
 
 NEXTWEEK=`~/blockparser/db/nextweek.py`
-s3cmd sync -m application/json --add-header="Expires: ${NEXTWEEK} 01:00:00 GMT" data/*byweek.json s3://charts.bconomy.com/data/
+s3cmd put -m application/json --add-header="Expires: ${NEXTWEEK} 01:00:00 GMT" data/*byweek.json s3://charts.bconomy.com/data/
 
 TOMORROW=`~/blockparser/db/tomorrow.py`
-s3cmd sync -m application/json --add-header="Expires: ${TOMORROW} 01:00:00 GMT" data/*byday.json s3://charts.bconomy.com/data/
-s3cmd sync -m application/json --add-header="Expires: ${TOMORROW} 01:00:00 GMT" data/*distrib s3://charts.bconomy.com/data/
+s3cmd put -m application/json --add-header="Expires: ${TOMORROW} 01:00:00 GMT" data/*byday.json s3://charts.bconomy.com/data/
+s3cmd put -m application/json --add-header="Expires: ${TOMORROW} 01:00:00 GMT" data/*distrib.json s3://charts.bconomy.com/data/
