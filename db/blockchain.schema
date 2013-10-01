@@ -4,7 +4,7 @@ BEGIN;
 CREATE TABLE t_block (
   f_id               BIGINT UNIQUE PRIMARY KEY
  ,f_hash             TEXT UNIQUE NOT NULL
- ,f_version          INT NOT NULL
+ ,f_version          BIGINT NOT NULL
  ,f_timestamp        TIMESTAMP WITHOUT TIME ZONE NOT NULL
  ,f_nonce            BIGINT NOT NULL
  ,f_difficulty       NUMERIC(20,4)
@@ -22,7 +22,7 @@ BEGIN;
 CREATE TABLE t_transaction (
   f_id               BIGINT UNIQUE PRIMARY KEY
  ,f_hash             TEXT UNIQUE NOT NULL
- ,f_version          INT NOT NULL
+ ,f_version          BIGINT NOT NULL
  ,f_blockid          BIGINT NOT NULL
  ,f_numinputs        BIGINT NOT NULL
  ,f_numoutputs       BIGINT NOT NULL

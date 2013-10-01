@@ -6,7 +6,7 @@ cd ~/blockparser/db
 # Find ID of first block to read
 function nextblock()
 {
-psql -t -h localhost -U blockchain <<-EOPSQL
+psql -q -t -h localhost -U blockchain <<-EOPSQL
 SELECT max(f_id) + 1 FROM t_block
 EOPSQL
 }
@@ -14,7 +14,7 @@ FIRSTBLOCK=`nextblock`
 
 ~/blockparser/parser csvdump -f $FIRSTBLOCK
 
-time psql -a -h localhost -U blockchain blockchain <<EOPSQL
+time psql -q -a -h localhost -U blockchain blockchain <<EOPSQL
 \copy t_block from 'blocks.csv' WITH (FORMAT CSV, HEADER);
 \copy t_transaction from 'transactions.csv' WITH (FORMAT CSV, HEADER);
 \copy t_output from 'outputs.csv' WITH (FORMAT CSV, HEADER);
@@ -24,13 +24,13 @@ EOPSQL
 # Update resultant stats
 function nextstats()
 {
-psql -t -h localhost -U blockchain <<-EOPSQL
+psql -q -t -h localhost -U blockchain <<-EOPSQL
 SELECT (max(f_date) + interval '1 day')::date FROM t_daily
 EOPSQL
 }
 FIRSTSTATS=`nextstats`
 
-~/blockparser/db/dates.py $FIRSTSTATS | psql -t -h localhost -U blockchain
+~/blockparser/db/dates.py $FIRSTSTATS | psql -q -t -h localhost -U blockchain
 
 ~/blockparser/db/dumpstats.sh
 
