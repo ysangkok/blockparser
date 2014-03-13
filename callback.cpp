@@ -38,7 +38,7 @@ Callback *Callback::find(
         while(i!=e) {
             const char *nm = *(i++);
             size_t x = std::min(sz, strlen(nm));
-            if(0==strncasecmp(nm, name, x)) found[(uintptr_t)c] = c;
+            if(0==strncasecmp(nm, name, x)) found[reinterpret_cast<uintptr_t>(c)] = c;
         }
     }
 

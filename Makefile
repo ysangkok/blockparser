@@ -1,39 +1,16 @@
-
 SHELL=/bin/sh
-MAKEFLAGS=-j8
 
-CPLUS = g++
+CPLUS = clang++
 
 INC =                           \
         -I.                     \
-        -DNDEBUG                \
+#        -DNDEBUG                \
 #        -DLITECOIN              \
 
-COPT =                          \
-        -pg                     \
-        -g0                     \
-        -O6                     \
-        -m64                    \
-        -Wall                   \
-        -msse3                  \
-        -Wextra                 \
-        -Wformat                \
-        -pedantic               \
-        -std=c++0x              \
-        -ffast-math             \
-        -fno-check-new          \
-        -funroll-loops          \
-        -Wno-deprecated         \
-        -fstrict-aliasing       \
-        -Wformat-security       \
-        -Wstrict-aliasing=2     \
-        -Wno-variadic-macros    \
-#        -fomit-frame-pointer    \
-        -Wno-unused-variable    \
-        -Wno-unused-parameter   \
-
-#LOPT =                          \
-#    -s                          \
+COPT =  -g                      \
+	-std=c++11		\
+	-stdlib=libc++ \
+#        -Ofast                  \
 
 LIBS =                          \
     -lcrypto                    \
@@ -195,4 +172,3 @@ clean:
 	-rm -r -f *.o *.i .objs .deps *.d parser
 
 -include .deps/*
-

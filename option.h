@@ -91,6 +91,7 @@ class Value {
     Value(const std::string& v) : str(v), valid(true) {}
     operator const char*() { return str.c_str(); }
     operator bool() { bool t; return (valid && (std::istringstream(str) >> t)) ? t : false; }
+    operator long long() { long long t; return (valid && (std::istringstream(str) >> t)) ? t : 0; }
     operator short() { short t; return (valid && (std::istringstream(str) >> t)) ? t : 0; }
     operator unsigned short() { unsigned short t; return (valid && (std::istringstream(str) >> t)) ? t : 0; }
     operator int() { int t; return (valid && (std::istringstream(str) >> t)) ? t : 0; }
@@ -222,7 +223,7 @@ class OptionParser {
 class OptionGroup : public OptionParser {
   public:
     OptionGroup(const OptionParser& p, const std::string& t, const std::string& d = "") :
-      _parser(p), _title(t), _group_description(d) {}
+      _title(t), _group_description(d) {}
     virtual ~OptionGroup() {}
 
     OptionGroup& title(const std::string& t) { _title = t; return *this; }
@@ -231,7 +232,6 @@ class OptionGroup : public OptionParser {
     const std::string& group_description() const { return _group_description; }
 
   private:
-    const OptionParser& _parser;
     std::string _title;
     std::string _group_description;
 };

@@ -206,7 +206,7 @@ struct SQLDump:public Callback
             fprintf(
                 stderr,
                 "block=%8" PRIu64 " "
-                "nbOutputs=%8" PRIu64 "\n",
+                "nbOutputs=%8zu\n",
                 b->height,
                 outputMap.size()
             );

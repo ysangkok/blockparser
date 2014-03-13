@@ -15,6 +15,8 @@
         static void showAllHelps(bool longHelp);
         static Callback *find(const char *name, bool printList=false);
 
+	virtual ~Callback () {}
+
         // Naming, option parsing, construction, etc ...
         virtual const char           *name(                            ) const = 0;              // Main name for callback
         virtual const Parser *optionParser(                            ) const = 0;              // Option parser object for callback
@@ -46,7 +48,7 @@
         // Called when an output has been fully parsed
         virtual void endOutput(
             const uint8_t *p,                   // Pointer to TX output raw data
-            uint64_t      value,                // Number of satoshis on this output
+            int64_t      value,                // Number of satoshis on this output
             const uint8_t *txHash,              // sha256 of the current transaction
             uint64_t      outputIndex,          // Index of this output in the current transaction
             const uint8_t *outputScript,        // Raw script (challenge to would-be spender) carried by this output

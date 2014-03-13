@@ -18,14 +18,14 @@
 const uint8_t hexDigits[] = "0123456789abcdef";
 const uint8_t b58Digits[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
-template<> uint8_t *PagedAllocator<Block>::pool = 0;
-template<> uint8_t *PagedAllocator<Block>::poolEnd = 0;
+template<> Block *PagedAllocator<Block>::pool = 0;
+template<> Block *PagedAllocator<Block>::poolEnd = 0;
 
-template<> uint8_t *PagedAllocator<uint256_t>::pool = 0;
-template<> uint8_t *PagedAllocator<uint256_t>::poolEnd = 0;
+template<> uint256_t *PagedAllocator<uint256_t>::pool = 0;
+template<> uint256_t *PagedAllocator<uint256_t>::poolEnd = 0;
 
-template<> uint8_t *PagedAllocator<uint160_t>::pool = 0;
-template<> uint8_t *PagedAllocator<uint160_t>::poolEnd = 0;
+template<> uint160_t *PagedAllocator<uint160_t>::pool = 0;
+template<> uint160_t *PagedAllocator<uint160_t>::poolEnd = 0;
 
 double usecs()
 {

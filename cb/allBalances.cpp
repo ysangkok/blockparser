@@ -18,7 +18,7 @@ typedef GoogMap<Hash160, Addr*, Hash160Hasher, Hash160Equal>::Map AddrMap;
 typedef GoogMap<Hash160, int, Hash160Hasher, Hash160Equal>::Map RestrictMap;
 
 struct Output {
-    int64_t time;
+    int32_t time;
     int64_t value;
     uint64_t inputIndex;
     uint64_t outputIndex;
@@ -29,18 +29,18 @@ typedef std::vector<Output> OutputVec;
 
 struct Addr
 {
-    uint64_t sum;
+    int64_t sum;
     uint64_t nbIn;
     uint64_t nbOut;
     uint160_t hash;
-    uint32_t lastIn;
-    uint32_t lastOut;
+    int32_t lastIn;
+    int32_t lastOut;
     OutputVec *outputVec;
 };
 
-template<> uint8_t *PagedAllocator<Addr>::pool = 0;
-template<> uint8_t *PagedAllocator<Addr>::poolEnd = 0;
-static inline Addr *allocAddr() { return (Addr*)PagedAllocator<Addr>::alloc(); }
+template<> Addr *PagedAllocator<Addr>::pool = 0;
+template<> Addr *PagedAllocator<Addr>::poolEnd = 0;
+static inline Addr *allocAddr() { return PagedAllocator<Addr>::alloc(); }
 
 struct CompareAddr
 {
@@ -63,7 +63,7 @@ struct AllBalances:public Callback
     optparse::OptionParser parser;
 
     AddrMap addrMap;
-    uint32_t blockTime;
+    int32_t blockTime;
     const Block *curBlock;
     const Block *lastBlock;
     const Block *firstBlock;
@@ -152,7 +152,7 @@ struct AllBalances:public Callback
 
             info(
                 "restricting output to %" PRIu64 " addresses ...\n",
-                (uint64_t)restricts.size()
+                restricts.size()
             );
 
             auto e = restricts.end();
@@ -177,10 +177,10 @@ struct AllBalances:public Callback
         const uint8_t *script,
         uint64_t      scriptSize,
         const uint8_t *upTXHash,
-        int64_t       outputIndex,
+        uint64_t       outputIndex,
         int64_t       value,
         const uint8_t *downTXHash = 0,
-        uint64_t      inputIndex = -1
+        uint64_t      inputIndex = static_cast<uint64_t>(-1)
     )
     {
         uint8_t addrType[3];
@@ -240,7 +240,7 @@ struct AllBalances:public Callback
 
     virtual void endOutput(
         const uint8_t *p,
-        uint64_t      value,
+        int64_t      value,
         const uint8_t *txHash,
         uint64_t      outputIndex,
         const uint8_t *outputScript,
@@ -286,7 +286,7 @@ struct AllBalances:public Callback
             outputScriptSize,
             upTXHash,
             outputIndex,
-            -(int64_t)value,
+            -static_cast<int64_t>(value),
             downTXHash,
             inputIndex
         );
@@ -305,7 +305,7 @@ struct AllBalances:public Callback
 
         info("done\n");
 
-        uint64_t nbRestricts = (uint64_t)restrictMap.size();
+        uint64_t nbRestricts = restrictMap.size();
         if(0==nbRestricts) info("dumping all balances ...");
         else               info("dumping balances for %" PRIu64 " addresses ...", nbRestricts);
 
@@ -348,16 +348,16 @@ struct AllBalances:public Callback
             printf(" %6" PRIu64 " %s\n", addr->nbOut, timeBuf);
 
             if(detailed) {
-                auto e = addr->outputVec->end();
-                auto s = addr->outputVec->begin();
-                while(s!=e) {
-                    printf("    %24.8f ", 1e-8*s->value);
-                    gmTime(timeBuf, s->time);
-                    showHex(s->upTXHash);
-                    printf("%4" PRIu64 " %s", s->outputIndex, timeBuf);
-                    if(s->downTXHash) {
-                        printf(" -> %4" PRIu64 " ", s->inputIndex);
-                        showHex(s->upTXHash);
+                auto end = addr->outputVec->end();
+                auto start = addr->outputVec->begin();
+                while(start!=end) {
+                    printf("    %24.8f ", 1e-8*start->value);
+                    gmTime(timeBuf, start->time);
+                    showHex(start->upTXHash);
+                    printf("%4" PRIu64 " %s", start->outputIndex, timeBuf);
+                    if(start->downTXHash) {
+                        printf(" -> %4" PRIu64 " ", start->inputIndex);
+                        showHex(start->upTXHash);
                     }
                     printf("\n");
                     ++s;
@@ -370,8 +370,8 @@ struct AllBalances:public Callback
 
         info("done\n");
         info("found %" PRIu64 " addresses with non zero balance", nonZeroCnt);
-        info("found %" PRIu64 " addresses in total", (uint64_t)allAddrs.size());
-        info("shown:%" PRIu64 " addresses", (uint64_t)i);
+        info("found %" PRIu64 " addresses in total", allAddrs.size());
+        info("shown:%" PRIu64 " addresses", i);
         printf("\n");
         exit(0);
     }
@@ -432,7 +432,7 @@ struct AllBalances:public Callback
         SKIP(uint32_t, version, p);
         SKIP(uint256_t, prevBlkHash, p);
         SKIP(uint256_t, blkMerkleRoot, p);
-        LOAD(uint32_t, bTime, p);
+        LOAD(int32_t, bTime, p);
         blockTime = bTime;
 
         if(0<=cutoffBlock && cutoffBlock<=curBlock->height) {

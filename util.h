@@ -11,8 +11,8 @@
     typedef const uint8_t *Hash256;
     struct uint160_t { uint8_t v[kRIPEMD160ByteSize]; };
     struct uint256_t { uint8_t v[   kSHA256ByteSize]; };
-    typedef signed int int128_t __attribute__((mode(TI)));
-    typedef unsigned int uint128_t __attribute__((mode(TI)));
+    typedef signed int int128_t;
+    typedef unsigned int uint128_t;
     struct Hash160Hasher { uint64_t operator()( const Hash160 &hash160) const { uintptr_t i = reinterpret_cast<uintptr_t>(hash160); const uint64_t *p = reinterpret_cast<const uint64_t*>(i); return p[0]; } };
     struct Hash256Hasher { uint64_t operator()( const Hash256 &hash256) const { uintptr_t i = reinterpret_cast<uintptr_t>(hash256); const uint64_t *p = reinterpret_cast<const uint64_t*>(i); return p[0]; } };
 
@@ -74,28 +74,28 @@
     >
     struct PagedAllocator
     {
-        static uint8_t *pool;
-        static uint8_t *poolEnd;
+        static T *pool;
+        static T *poolEnd;
         enum { kPageByteSize = sizeof(T)*kPageSize };
 
-        static uint8_t *alloc()
+        static T *alloc()
         {
             if(unlikely(poolEnd<=pool)) {
-                pool = (uint8_t*)malloc(kPageByteSize);
+                pool = static_cast<T*>(malloc(kPageByteSize));
                 poolEnd = kPageByteSize + pool;
             }
 
-            uint8_t *result = pool;
+            T *result = pool;
             pool += sizeof(T);
             return result;
         }
     };
 
-    static inline Block   *allocBlock()   { return (Block*)PagedAllocator<    Block>::alloc(); }
-    static inline uint8_t *allocHash256() { return         PagedAllocator<uint256_t>::alloc(); }
-    static inline uint8_t *allocHash160() { return         PagedAllocator<uint160_t>::alloc(); }
+    static inline Block   *allocBlock()   { return static_cast<Block*>(PagedAllocator<    Block>::alloc()); }
+    static inline uint8_t *allocHash256() { return         reinterpret_cast<uint8_t*>(PagedAllocator<uint256_t>::alloc()); }
+    static inline uint8_t *allocHash160() { return         reinterpret_cast<uint8_t*>(PagedAllocator<uint160_t>::alloc()); }
 
-    #define WANT_DENSE
+    //#define WANT_DENSE
     #if defined(WANT_DENSE)
 
         // Faster, uses more RAM
@@ -165,14 +165,14 @@
         p += sizeof(type)            \
 
     #define LOAD(type, var, p)       \
-        type var = *(type*)p;        \
+        type var = *((type*) p);        \
         p += sizeof(type)            \
 
     #define LOAD_VARINT(var, p)      \
         uint64_t var = loadVarInt(p) \
 
-    static inline uint64_t loadVarInt(
-        const uint8_t *&p
+    template <typename T> static inline uint64_t loadVarInt(
+        const T *&p
     )
     {
         uint64_t r = *(p++);
@@ -237,7 +237,7 @@
     static inline void sha256Twice(
               uint8_t *sha,
         const uint8_t *buf,
-        uint64_t      size
+        size_t      size
     )
     {
         sha256(sha, buf, size);
